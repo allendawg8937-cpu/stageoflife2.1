@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function owns(userId) {
+      return signedIn() && request.auth.uid == userId;
+    }
+
+    // Private user documents are readable/writable only by their owner.
+    match /users/{userId} {
+      allow read: if owns(userId);
+      allow create: if owns(userId)
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'email', 'lifeStage', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.lifeStage in [
+          'kid', 'teen', 'student', 'adult', 'business', 'veteran'
+        ];
+      allow update: if owns(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'lifeStage', 'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.lifeStage in [
+          'kid', 'teen', 'student', 'adult', 'business', 'veteran'
+        ];
+      allow delete: if false;
+
+      match /{subcollection}/{documentId} {
+        allow read, write: if owns(userId);
+      }
+    }
+
+    // Default deny for every collection not explicitly modeled above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
